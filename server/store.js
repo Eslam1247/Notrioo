@@ -1,19 +1,41 @@
-// Storage abstraction: uses PostgreSQL when DATABASE_URL is set, otherwise
-// falls back to the same db.json file used before — so local development
-// with no database configured keeps working exactly as it did.
 import fs from 'fs'
 import crypto from 'crypto'
 import pg from 'pg'
 
+const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
 const usePg = !!process.env.DATABASE_URL
+
+if (isProduction && !usePg) {
+  throw new Error('DATABASE_URL is required in production')
+}
+
 let pool = null
 
 // ---------------- JSON-file mode (fallback / local dev) ----------------
 const F = new URL('./db.json', import.meta.url)
-let jdb = null
-function jload() { if (!jdb) { jdb = fs.existsSync(F) ? JSON.parse(fs.readFileSync(F, 'utf8')) : { users: [], orders: [], messages: [], stock: {} }; if (!jdb.stock) jdb.stock = {} } return jdb }
-function jsave() { fs.writeFileSync(F, JSON.stringify(jdb, null, 1)) }
 
+let jdb = null
+
+function jload() {
+  if (!jdb) {
+    jdb = fs.existsSync(F)
+      ? JSON.parse(fs.readFileSync(F, 'utf8'))
+      : {
+          users: [],
+          orders: [],
+          messages: [],
+          stock: {}
+        }
+
+    if (!jdb.stock) jdb.stock = {}
+  }
+
+  return jdb
+}
+
+function jsave() {
+  fs.writeFileSync(F, JSON.stringify(jdb, null, 1))
+}
 // ---------------- init ----------------
 export async function init(cat) {
   if (usePg) {
