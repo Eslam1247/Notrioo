@@ -109,4 +109,13 @@ app.use((error, req, res, next) => {
 })
 
 export default app
-export const ready = store.init(cat) // the caller (index.js locally, api/index.js on Vercel) awaits this before serving requests
+
+let readyPromise = null
+
+export function initServer() {
+  if (!readyPromise) {
+    readyPromise = store.init(cat)
+  }
+
+  return readyPromise
+}
