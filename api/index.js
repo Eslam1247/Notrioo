@@ -1,18 +1,21 @@
-import app, { ready } from '../server/app.js'
+// Vercel serverless entry point. vercel.json rewrites every /api/* request to this file, and it hands
+// the request to the same Express app used for local development (../server/app.js).
+import app, { getReady } from '../server/app.js'
+
+// Removes quoted values (e.g. usernames) so the diagnostic is safe to show in the browser.
+const safe = e => String(e?.message || e).replace(/"[^"]*"/g, '"…"').slice(0, 200)
 
 export default async function handler(req, res) {
   try {
-    await ready
-  } catch (error) {
-    console.error('Database/startup init failed:', error)
-
-    return res.status(500).json({
-      error: 'تعذّر الاتصال بقاعدة البيانات.',
-      details:
-        error?.message ||
-        'تحقق من DATABASE_URL في Vercel.'
+    await getReady() // DB connection + tables; retried automatically on the next request if it failed
+  } catch (e) {
+    console.error('Database/startup init failed:', e)
+    res.status(500).json({
+      error: 'تعذّر الاتصال بقاعدة البيانات. راجع DATABASE_URL في إعدادات Vercel ثم اعمل Redeploy.',
+      detail: safe(e),
+      envSeen: { DATABASE_URL: !!process.env.DATABASE_URL, POSTGRES_URL: !!process.env.POSTGRES_URL, STORAGE_URL: !!process.env.STORAGE_URL, JWT_SECRET: !!process.env.JWT_SECRET, ADMIN_KEY: !!process.env.ADMIN_KEY },
     })
+    return
   }
-
-  return app(req, res)
+  app(req, res)
 }

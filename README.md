@@ -43,7 +43,7 @@ Visit `/admin` in the site and enter your `ADMIN_KEY` (from server/.env). Two ta
 
 ## Deploying: everything on Vercel (recommended — genuinely free, one platform)
 
-The backend (`server/app.js`) also runs as a Vercel Serverless Function via `api/[...path].js`, so the whole site — frontend and backend — deploys as a single free Vercel project. No second host, no bill.
+The backend (`server/app.js`) also runs as a Vercel Serverless Function via `api/index.js`, so the whole site — frontend and backend — deploys as a single free Vercel project. No second host, no bill.
 
 1. New Project on Vercel → import your repo → root directory is the project root (Vercel auto-detects Vite; the included `vercel.json` also sets the build).
 2. Add environment variables in the project's Settings → Environment Variables:
