@@ -13,9 +13,13 @@ const statusLabel: Record<string, [string, string]> = {
 const statusColor: Record<string, string> = { received: 'bg-fog text-ink', confirmed: 'bg-blue/10 text-blue', shipped: 'bg-neon text-ink', delivered: 'bg-[#1f8f5c]/10 text-[#1f8f5c]', cancelled: 'bg-magenta/10 text-magenta' }
 
 async function call(key: string, path: string, opts: { method?: string; body?: unknown } = {}) {
-  const r = await fetch(API_BASE + '/api/admin' + path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: opts.body ? JSON.stringify(opts.body) : undefined })
+  let r: Response
+  try { r = await fetch(API_BASE + '/api/admin' + path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: opts.body ? JSON.stringify(opts.body) : undefined }) }
+  catch { throw new Error('NETWORK') }
   if (r.status === 403) throw new Error('KEY')
-  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'error'); return d
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error([d.error || `HTTP ${r.status}`, d.detail].filter(Boolean).join(' — '))
+  return d
 }
 
 function StockPanel({ admKey }: { admKey: string }) {
@@ -63,7 +67,7 @@ export default function Admin() {
   const load = async (k: string) => {
     setErr('')
     try { setOrders(await call(k, '/orders')); sessionStorage.setItem('nt_admin_key', k); setKey(k) }
-    catch (e: any) { if (e.message === 'KEY') { setErr(pick('المفتاح غير صحيح.', 'Invalid admin key.')); sessionStorage.removeItem('nt_admin_key'); setKey('') } else setErr(pick('تعذّر الاتصال بالسيرفر. تأكد إن الباك إند شغّال.', "Couldn't reach the server. Make sure the backend is running.")) }
+    catch (e: any) { if (e.message === 'KEY') { setErr(pick('المفتاح غير صحيح.', 'Invalid admin key.')); sessionStorage.removeItem('nt_admin_key'); setKey('') } else if (e.message === 'NETWORK') setErr(pick('تعذّر الوصول للسيرفر. تأكد من اتصال الإنترنت.', "Couldn't reach the server. Check your connection.")); else setErr(e.message) }
   }
   useEffect(() => { if (key) load(key) }, [])
 

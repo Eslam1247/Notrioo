@@ -1,48 +1,33 @@
+// Storage abstraction: uses PostgreSQL when DATABASE_URL is set, otherwise
+// falls back to the same db.json file used before — so local development
+// with no database configured keeps working exactly as it did.
 import fs from 'fs'
 import crypto from 'crypto'
 import pg from 'pg'
 
-const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
-const usePg = !!process.env.DATABASE_URL
-
-if (isProduction && !usePg) {
-  throw new Error('DATABASE_URL is required in production')
-}
-
+// Vercel's Neon/Supabase integrations may name the variable differently, so accept the common names.
+const RAW_DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.STORAGE_URL || process.env.NEON_DATABASE_URL || ''
+const DB_URL = RAW_DB_URL.replace(/[?&]channel_binding=[^&]*/g, '').replace(/\?$/, '') // channel_binding isn't supported by node-postgres
+const usePg = !!DB_URL
 let pool = null
 
 // ---------------- JSON-file mode (fallback / local dev) ----------------
 const F = new URL('./db.json', import.meta.url)
-
 let jdb = null
+function jload() { if (!jdb) { jdb = fs.existsSync(F) ? JSON.parse(fs.readFileSync(F, 'utf8')) : { users: [], orders: [], messages: [], stock: {} }; if (!jdb.stock) jdb.stock = {} } return jdb }
+function jsave() { fs.writeFileSync(F, JSON.stringify(jdb, null, 1)) }
 
-function jload() {
-  if (!jdb) {
-    jdb = fs.existsSync(F)
-      ? JSON.parse(fs.readFileSync(F, 'utf8'))
-      : {
-          users: [],
-          orders: [],
-          messages: [],
-          stock: {}
-        }
+export const mode = () => (usePg ? 'postgres' : 'json-file')
 
-    if (!jdb.stock) jdb.stock = {}
-  }
-
-  return jdb
-}
-
-function jsave() {
-  fs.writeFileSync(F, JSON.stringify(jdb, null, 1))
-}
 // ---------------- init ----------------
 export async function init(cat) {
+  // On Vercel the filesystem is read-only, so the db.json fallback can never work there — fail loudly instead.
+  if (!usePg && process.env.VERCEL) throw new Error('No database URL found. Set DATABASE_URL in Vercel → Settings → Environment Variables, then redeploy.')
   if (usePg) {
     // max: a small pool per serverless instance — each concurrent Vercel invocation gets its own instance,
     // so a high per-instance limit multiplies into way more connections than Postgres allows. Supabase's
     // "Transaction pooler" (port 6543, PgBouncer) is built exactly for this and handles the real fan-out.
-    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10000 })
+    pool = new pg.Pool({ connectionString: DB_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10000 })
     pool.on('error', e => console.error('pg pool idle client error:', e.message)) // keeps a dropped idle connection from crashing the whole function
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (

@@ -102,6 +102,7 @@ app.post('/api/contact', limit(5), async (req, res) => { const { name, phone, me
 // Catches anything thrown/rejected in a route above (e.g. a database connection failure) and
 // returns a clean JSON error instead of hanging the request or crashing the serverless function.
 // Logs the real error to the console so it's visible in Vercel's Function Logs for debugging.
+app.get('/api/health', (req, res) => res.json({ ok: true, db: store.mode() }))
 app.use((error, req, res, next) => {
   console.error('Unhandled error on', req.method, req.path, ':', error)
   if (res.headersSent) return next(error)
@@ -109,13 +110,6 @@ app.use((error, req, res, next) => {
 })
 
 export default app
-
-let readyPromise = null
-
-export function initServer() {
-  if (!readyPromise) {
-    readyPromise = store.init(cat)
-  }
-
-  return readyPromise
-}
+// Memoized, but retried on failure: a failed first attempt (e.g. wrong DB URL) must not stay broken until the next cold start.
+let _ready = null
+export const getReady = () => (_ready ??= store.init(cat).catch(e => { _ready = null; throw e }))
